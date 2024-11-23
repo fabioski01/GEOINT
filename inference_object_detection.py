@@ -164,5 +164,4 @@ if __name__ == "__main__":
         plot_image_with_boxes(image, box, label, scores=score, class_names={1: "1", 2: "2", 3: "3", 4:"4", 5:"5", 6:"6", 7:"7", 8:"8", 9:"9", 10:"10", 11:"11", 12:"12"},threshold=0.5)
 
     plot_image_with_boxes(image, predictions["boxes"], predictions["labels"], scores=predictions["scores"],
-                          class_names={1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "7", 8: "8", 9: "9", 10: "10",
-                                       11: "11", 12: "12"}, threshold=0.5)
+                          class_names={1:"car", 2:"trucks", 4: "tractors", 5: "camping cars", 9: "vans", 10: "others", 11: "pickup", 23: "boats" , 201: "Small Land Vehicles", 301: "Large land Vehicles"}, threshold=0.5)
