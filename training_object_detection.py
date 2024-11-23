@@ -106,6 +106,39 @@ class VehicleDataset(torch.utils.data.Dataset):
         return boxes, labels
 
 
+    def _find_classes(self):
+        """
+        Read all annotation files to find unique class labels.
+
+        This method scans through all annotation files in the dataset directory,
+        extracts the class labels from each file, and collects them into a set 
+        to ensure uniqueness. The resulting set of class labels is sorted and returned.
+
+        The class label is expected to be located in the 5th column (index 4) of each line
+        in the annotation file. This column represents the object class for the bounding box.
+
+        Example of annotation line format:
+            290.348971 504.611640 3.012318 2 1 0 277 303 304 279 502 498 508 511
+            cx cy rot? class? class? class? corner_topleft_x corner_topright_x corner_bottomright_x corner_bottomleft_x corner_topleft_y corner_topright_y corner_bottomright_y corner_bottomleft_y 
+
+        Returns:
+            list: A sorted list of unique class labels present in the dataset.
+        """
+        print("Finding unique classes in the dataset...")
+        class_set = set()  # Store unique class labels
+        for base_name in self.image_bases:
+            # Path to annotation file
+            annotation_path = os.path.join(self.annotations_dir, f"{base_name}.txt")
+            with open(annotation_path, 'r') as f:
+                for line in f:
+                    parts = list(map(float, line.split()))
+                    class_set.add(int(parts[4]))  # Extract class label at index 4
+
+        unique_classes = sorted(class_set)
+        print(f"Found {len(unique_classes)} unique classes: {unique_classes}")
+        return unique_classes
+
+
 def get_model(num_classes):
     """
     Load a pre-trained Faster R-CNN model and replace the classifier head.
