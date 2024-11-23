@@ -114,12 +114,12 @@ class VehicleDataset(torch.utils.data.Dataset):
         extracts the class labels from each file, and collects them into a set 
         to ensure uniqueness. The resulting set of class labels is sorted and returned.
 
-        The class label is expected to be located in the 5th column (index 4) of each line
+        The class label is expected to be located in the 4th column (index 3) of each line
         in the annotation file. This column represents the object class for the bounding box.
 
         Example of annotation line format:
-            290.348971 504.611640 3.012318 2 1 0 277 303 304 279 502 498 508 511
-            cx cy rot? class? class? class? corner_topleft_x corner_topright_x corner_bottomright_x corner_bottomleft_x corner_topleft_y corner_topright_y corner_bottomright_y corner_bottomleft_y 
+        290.348971  504.611640  3.012318    2       1      0        277                 303                 304                     279                 502                 498                 508                     511
+        cx          cy          rot?        class?  class? class?   corner_topleft_x    corner_topright_x   corner_bottomright_x    corner_bottomleft_x corner_topleft_y    corner_topright_y   corner_bottomright_y    corner_bottomleft_y 
 
         Returns:
             list: A sorted list of unique class labels present in the dataset.
@@ -132,7 +132,7 @@ class VehicleDataset(torch.utils.data.Dataset):
             with open(annotation_path, 'r') as f:
                 for line in f:
                     parts = list(map(float, line.split()))
-                    class_set.add(int(parts[4]))  # Extract class label at index 4
+                    class_set.add(int(parts[3]))  # Extract class label at index 3
 
         unique_classes = sorted(class_set)
         print(f"Found {len(unique_classes)} unique classes: {unique_classes}")
@@ -149,7 +149,7 @@ def get_model(num_classes):
     Returns:
         torch.nn.Module: The modified Faster R-CNN model.
     """
-    print("Loading pre-trained Faster R-CNN model...")
+    print(f"Loading model with {num_classes} classes...")
     model = fasterrcnn_resnet50_fpn(pretrained=True)
 
     # Replace the classifier head
@@ -158,8 +158,7 @@ def get_model(num_classes):
     print("Model ready for training.")
     return model
 
-
-def train_model(images_dir, annotations_dir, output_model_path, num_classes=2, num_epochs=10, batch_size=2, lr=0.005):
+def train_model(images_dir, annotations_dir, output_model_path, num_epochs=10, batch_size=2, lr=0.005):
     """
     Train the Faster R-CNN model.
 
@@ -167,23 +166,28 @@ def train_model(images_dir, annotations_dir, output_model_path, num_classes=2, n
         images_dir (str): Path to the directory containing images.
         annotations_dir (str): Path to the directory containing annotations.
         output_model_path (str): Path to save the trained model.
-        num_classes (int): Number of classes (including background).
         num_epochs (int): Number of training epochs.
         batch_size (int): Batch size for training.
         lr (float): Learning rate.
     """
     print("Preparing dataset and dataloader...")
-    transform = transforms.Compose([transforms.ToTensor()])
+    transform = transforms.Compose([transforms.ToTensor()])  # Convert PIL to Tensor
     dataset = VehicleDataset(images_dir, annotations_dir, transform)
+
+    # Dynamically determine the number of classes (including background)
+    num_classes = len(dataset._find_classes()) + 1
+    print(f"Number of classes (including background): {num_classes}")
+
+    # Initialize the dataloader
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=lambda x: tuple(zip(*x)),
+        collate_fn=lambda x: tuple(zip(*x)),  # Required for object detection datasets
     )
 
     print("Initializing model and optimizer...")
-    model = get_model(num_classes)
+    model = get_model(num_classes)  # Pass dynamically determined num_classes
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model.to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=0.0005)
@@ -217,11 +221,10 @@ def train_model(images_dir, annotations_dir, output_model_path, num_classes=2, n
     torch.save(model.state_dict(), output_model_path)
     print(f"Model saved to {output_model_path}")
 
-
 if __name__ == "__main__":
     print("Starting script...")
     images_dir = "/home/fabioski01/GEOINT_files/Vehicules512"
     annotations_dir = "/home/fabioski01/GEOINT_files/Annotations512"
     output_model_path = "fasterrcnn_vehicle_detector.pth"
 
-    train_model(images_dir, annotations_dir, output_model_path, num_classes=2, num_epochs=10)
+    train_model(images_dir, annotations_dir, output_model_path, num_epochs=10)
