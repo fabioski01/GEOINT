@@ -6,6 +6,7 @@ import geopandas as gpd
 from shapely.geometry import Polygon, MultiPolygon
 from shapely.ops import unary_union
 import xarray as xr
+import imageio
 
 
 # Connessione al backend di OpenEO
@@ -37,6 +38,8 @@ date = "2023-09-11"
 original = xr.open_dataset('torino_rgb.nc').sel(t=date)[bands].to_array().values
 original = original[:, :original.shape[1], :original.shape[2]]
 rgb_original = np.clip(original[[2,1,0]]/4000,0,1).transpose(1,2,0)
+# Salva l'immagine RGB come PNG
+imageio.imwrite('rgb_original.png', (rgb_original * 255).astype('uint8'))
 
 plt.figure(figsize=(10, 10))  # Imposta la dimensione del plot
 plt.imshow(rgb_original, interpolation='nearest')
