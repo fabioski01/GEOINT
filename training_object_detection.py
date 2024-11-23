@@ -5,6 +5,7 @@ from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from PIL import Image
 import os
+import numpy
 
 
 class VehicleDataset(torch.utils.data.Dataset):
@@ -223,8 +224,13 @@ def train_model(images_dir, annotations_dir, output_model_path, num_epochs=10, b
 
 if __name__ == "__main__":
     print("Starting script...")
-    images_dir = "/home/fabioski01/GEOINT_files/Vehicules512"
-    annotations_dir = "/home/fabioski01/GEOINT_files/Annotations512"
+
+
+
+
+
+    images_dir = "Vehicules512"
+    annotations_dir = "Annotations512"
     output_model_path = "fasterrcnn_vehicle_detector.pth"
 
     train_model(images_dir, annotations_dir, output_model_path, num_epochs=10)

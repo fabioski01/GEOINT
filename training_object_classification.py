@@ -129,7 +129,7 @@ if __name__ == "__main__":
         return color_images, ir_images, annotations
 
     # 3. Initialize Dataset and DataLoader for training
-    train_dataset = VehicleDataset(images_dir='/home/fabioski01/GEOINT_files/Vehicules512', annotations_dir='/home/fabioski01/GEOINT_files/Annotations512', transform=transform)
+    train_dataset = VehicleDataset(images_dir='Vehicules512', annotations_dir='Annotations512', transform=transform)
     train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
 
     # 5. Initialize the model, loss function, and optimizer
