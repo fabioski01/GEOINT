@@ -8,69 +8,90 @@ import os
 from PIL import Image
 import xml.etree.ElementTree as ET
 
-# 1. Dataset Class to load images and annotations (XML format)
-class VehicleDataset(Dataset):
-    def __init__(self, images_dir, annotations_dir, transform=None):
+# Dataset class to handle loading and processing of vehicle images and their annotations
+class VehicleDataset(torch.utils.data.Dataset):
+    def __init__(self, images_dir, annotations_dir, transform=None, max_objects=10):
         """
         Args:
-            images_dir (string): Directory with all the images.
-            annotations_dir (string): Directory with all the annotation XML files.
+            images_dir (str): Path to the directory containing images.
+            annotations_dir (str): Path to the directory containing annotation files.
             transform (callable, optional): Optional transform to be applied on a sample.
+            max_objects (int): Maximum number of bounding boxes per image.
         """
         self.images_dir = images_dir  # Directory containing images
         self.annotations_dir = annotations_dir  # Directory containing annotation files
-        self.transform = transform  # Transform to apply to images
-
-        # List of image file paths
-        self.image_paths = [os.path.join(images_dir, fname) for fname in os.listdir(images_dir) if fname.endswith('.jpg')]
+        self.transform = transform  # Transformation to apply on images (resize, etc.)
+        self.max_objects = max_objects  # Max number of objects per image (for padding)
         
+        # List all annotation files and sort them
+        self.image_bases = [os.path.splitext(fname)[0] for fname in os.listdir(annotations_dir) if fname.endswith('.txt')]
+        self.image_bases.sort()  # Ensure consistent indexing (if needed)
+
     def __len__(self):
-        """Return the total number of images in the dataset"""
-        return len(self.image_paths)
-    
+        # Return the number of images (same as number of annotation files)
+        return len(self.image_bases)
+
     def __getitem__(self, idx):
-        """Fetch an image and its corresponding annotation (bounding box and label)"""
-        img_path = self.image_paths[idx]  # Get image path
-        image = Image.open(img_path)  # Open image using PIL
+        # Get the base name (without extension) for the current image and annotation pair
+        base_name = self.image_bases[idx]
+        
+        # Construct file paths for both color and infrared images
+        color_image_path = os.path.join(self.images_dir, f"{base_name}_co.png")
+        ir_image_path = os.path.join(self.images_dir, f"{base_name}_ir.png")
 
-        # Get corresponding annotation XML file path
-        xml_file = os.path.join(self.annotations_dir, os.path.basename(img_path).replace('.jpg', '.xml'))
-        
-        # Parse the XML annotation to get the bounding boxes and labels
-        annotations = self.parse_annotation(xml_file)
-        
-        # Apply any transformations like resizing, normalization, etc.
+        # Load the images using PIL
+        color_image = Image.open(color_image_path)
+        ir_image = Image.open(ir_image_path)
+
+        # Load the corresponding annotation file
+        txt_file = os.path.join(self.annotations_dir, f"{base_name}.txt")
+        annotations = self.parse_annotation(txt_file)  # Parse bounding box and label information
+
+        # Padding annotations if the number of boxes is less than the max_objects
+        num_boxes = annotations['boxes'].size(0)
+
+        if num_boxes > self.max_objects:
+            annotations['boxes'] = annotations['boxes'][:self.max_objects]
+            annotations['labels'] = annotations['labels'][:self.max_objects]
+        elif num_boxes < self.max_objects:
+            padding = torch.zeros(self.max_objects - num_boxes, 4)
+            annotations['boxes'] = torch.cat([annotations['boxes'], padding], dim=0)
+            annotations['labels'] = torch.cat(
+                [annotations['labels'], torch.zeros(self.max_objects - num_boxes, dtype=torch.int64)]
+            )
+        # Apply any specified transformations (e.g., resizing) to the images
         if self.transform:
-            image = self.transform(image)
-        
-        return image, annotations  # Return image and annotations
-    
-    def parse_annotation(self, xml_file):
-        """Parse XML file to get the bounding boxes and labels"""
-        tree = ET.parse(xml_file)  # Parse the XML
-        root = tree.getroot()  # Get root of XML
+            color_image = self.transform(color_image)
+            ir_image = self.transform(ir_image)
 
+        # Return the transformed images and their annotations
+        return color_image, ir_image, annotations
+
+    def parse_annotation(self, txt_file):
+        """
+        Parse a single annotation file and extract bounding boxes and labels.
+        Each line in the annotation file corresponds to one object, with box coordinates and label.
+        """
         boxes = []
         labels = []
-        
-        # Iterate over all objects in the XML file (cars, trucks, etc.)
-        for obj in root.findall('object'):
-            label = obj.find('name').text  # Get the label of the object (vehicle type)
-            
-            # Get the bounding box coordinates (xmin, ymin, xmax, ymax)
-            bndbox = obj.find('bndbox')
-            xmin = int(bndbox.find('xmin').text)
-            ymin = int(bndbox.find('ymin').text)
-            xmax = int(bndbox.find('xmax').text)
-            ymax = int(bndbox.find('ymax').text)
-            
-            # Append the bounding box coordinates and label
-            boxes.append([xmin, ymin, xmax, ymax])
-            labels.append(label)  # You can later map labels to integers if needed
-        
-        # Return a dictionary containing the bounding boxes and labels
-        return {'boxes': torch.tensor(boxes, dtype=torch.float32), 'labels': labels}
 
+        # Open and read the annotation file
+        with open(txt_file, 'r') as f:
+            for line in f:
+                parts = list(map(float, line.split()))  # Convert line to a list of floats
+                x1, y1, x2, y2 = parts[6:10]  # Extract bounding box coordinates
+                label = int(parts[4])  # Extract object label (assuming it's at index 4)
+                
+                # Append the bounding box and label to respective lists
+                boxes.append([x1, y1, x2, y2])
+                labels.append(label)
+
+        # Convert boxes and labels to tensors for PyTorch
+        boxes = torch.tensor(boxes, dtype=torch.float32)
+        labels = torch.tensor(labels, dtype=torch.int64)
+
+        # Return the parsed bounding boxes and labels
+        return {'boxes': boxes, 'labels': labels}
 
 # 2. Define Image Transformations (resizing, normalization)
 transform = transforms.Compose([
@@ -79,9 +100,19 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Normalize with ImageNet stats
 ])
 
+# Define collate_fn for DataLoader
+def collate_fn(batch):
+    color_images = torch.stack([item[0] for item in batch])
+    ir_images = torch.stack([item[1] for item in batch])
+    annotations = {
+        'boxes': torch.stack([item[2]['boxes'] for item in batch]),
+        'labels': torch.stack([item[2]['labels'] for item in batch]),
+    }
+    return color_images, ir_images, annotations
+
 # 3. Initialize Dataset and DataLoader for training
-train_dataset = VehicleDataset(images_dir='/path/to/train/images', annotations_dir='/path/to/train/annotations', transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+train_dataset = VehicleDataset(images_dir='/home/fabioski01/GEOINT/Vehicules512', annotations_dir='/home/fabioski01/GEOINT/Annotations512', transform=transform)
+train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
 
 # 4. Define a simple Neural Network model (using a pretrained ResNet-18 model for transfer learning)
 class VehicleRecognitionModel(nn.Module):
@@ -111,15 +142,15 @@ for epoch in range(num_epochs):
     running_loss = 0.0  # Initialize running loss for the epoch
     
     # Iterate over batches of data
-    for images, annotations in train_loader:
+    for color_images, ir_images, annotations in train_loader:
         # Zero the gradients of the optimizer (to prevent accumulation)
         optimizer.zero_grad()
         
         # Forward pass: Get predictions from the model
-        outputs = model(images)  # Model outputs predictions (class probabilities)
+        outputs = model(color_images)  # Model outputs predictions (class probabilities)
         
         # Assuming the annotations contain the correct labels (for simplicity, assuming labels are integers)
-        labels = annotations['labels']  # These would need to be mapped to integer labels (e.g., vehicle=0, not_vehicle=1)
+        labels = torch.argmax(annotations['labels'], dim=1)   # These would need to be mapped to integer labels (e.g., vehicle=0, not_vehicle=1)
         
         # Calculate the loss
         loss = criterion(outputs, labels)  # Compare predictions to true labels
@@ -136,12 +167,32 @@ for epoch in range(num_epochs):
     # Print loss for the epoch
     print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader)}")
 
-# 7. Evaluation (Optional: To test the model on unseen data, e.g., a validation set)
-model.eval()  # Set model to evaluation mode (turns off dropout, batchnorm, etc.)
-with torch.no_grad():  # Disable gradient calculation for evaluation
-    for images, annotations in train_loader:  # You would use a validation set here
-        outputs = model(images)  # Get predictions from the model
-        # Evaluate performance (e.g., compute accuracy, IoU for bounding boxes)
-        # For simplicity, this step is skipped here
+# 7. Saving model
+torch.save(model.state_dict(), 'vehicle_model.pth')
+
+# 8. Evaluation (Optional: To test the model on unseen data, e.g., a validation set)
+model.eval()  # Set the model to evaluation mode (disables dropout, batchnorm, etc.)
+with torch.no_grad():  # Disable gradient calculations for evaluation
+    for color_images, ir_images, annotations in train_loader:  # Use the train_loader for now, but a validation_loader would be better
+        outputs = model(color_images)  # Use only color images for predictions
+        # Add performance metrics calculation here if needed
+
+# this ignores infrared images
+# model.eval()
+# with torch.no_grad():
+#     for color_images, _, _ in train_loader:  # Ignore IR images and annotations
+#         outputs = model(color_images)
+#         # Add any additional performance metric calculations here, if necessary
+
 
 print("Training Complete!")
+
+# This loads a saved model
+# model = VehicleRecognitionModel()
+# model.load_state_dict(torch.load('vehicle_model.pth'))
+# model.eval()  # Set the model to evaluation mode
+
+# dataset = VehicleDataset(images_dir='/home/fabioski01/GEOINT/Vehicules512', annotations_dir='/home/fabioski01/GEOINT/Annotations512', transform=None)
+# sample = dataset[0]  # Get the first sample
+# color_image, ir_image, annotations = sample
+# print(color_image.size, ir_image.size, annotations)
