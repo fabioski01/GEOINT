@@ -45,32 +45,46 @@ class VehicleDataset(Dataset):
         
         return image, annotations  # Return image and annotations
     
-    def parse_annotation(self, xml_file):
-        """Parse XML file to get the bounding boxes and labels"""
-        tree = ET.parse(xml_file)  # Parse the XML
-        root = tree.getroot()  # Get root of XML
-
+    '''
+    annotations are in the following format
+    290.348971 504.611640 3.012318 2 1 0 277 303 304 279 502 498 508 511
+    - 290.348971 504.611640: Coordinates (likely the center) of the object (e.g., (x, y)).
+    - 3.012318: Possibly the orientation/angle of the object (rotation).
+    - 2: Class or object type (e.g., vehicle class 2).
+    - 1 0: Possibly some binary flags or additional attributes
+    - 277 303 304 279 502 498 508 511: These seem to be coordinates of the bounding box (the coordinates of the four corners of the bounding box).
+    '''
+    def parse_annotation(self, txt_file):
+        """Parse the .txt annotation file to get the bounding boxes and labels"""
         boxes = []
         labels = []
         
-        # Iterate over all objects in the XML file (cars, trucks, etc.)
-        for obj in root.findall('object'):
-            label = obj.find('name').text  # Get the label of the object (vehicle type)
-            
-            # Get the bounding box coordinates (xmin, ymin, xmax, ymax)
-            bndbox = obj.find('bndbox')
-            xmin = int(bndbox.find('xmin').text)
-            ymin = int(bndbox.find('ymin').text)
-            xmax = int(bndbox.find('xmax').text)
-            ymax = int(bndbox.find('ymax').text)
-            
-            # Append the bounding box coordinates and label
-            boxes.append([xmin, ymin, xmax, ymax])
-            labels.append(label)  # You can later map labels to integers if needed
+        with open(txt_file, 'r') as f:
+            for line in f:
+                fields = line.strip().split()  # Split the line into fields
+                
+                # Extract the required fields:
+                # 1. Bounding box coordinates (assuming it's [x, y, w, h, ...])
+                x, y, w, h = float(fields[0]), float(fields[1]), float(fields[2]), float(fields[3])
+                
+                # 2. Extract the label (e.g., vehicle type)
+                label = int(fields[4])  # Assuming the label is an integer (e.g., 2 for vehicle)
+                
+                # 3. Bounding box corners (e.g., [277, 303, 304, 279, ...])
+                # These might represent the bounding box corners or some other values
+                bbox_corners = list(map(int, fields[5:]))  # Converting the remaining fields to integers
+                
+                # Calculate bounding box (x, y, x2, y2) from the corners (if needed)
+                # Assuming bbox_corners are [x1, y1, x2, y2, ...]
+                xmin, ymin = bbox_corners[0], bbox_corners[1]
+                xmax, ymax = bbox_corners[2], bbox_corners[3]
+                
+                # Append the bounding box and label
+                boxes.append([xmin, ymin, xmax, ymax])
+                labels.append(label)  # Store the class label (e.g., 2 for vehicle)
         
         # Return a dictionary containing the bounding boxes and labels
         return {'boxes': torch.tensor(boxes, dtype=torch.float32), 'labels': labels}
-
 
 # 2. Define Image Transformations (resizing, normalization)
 transform = transforms.Compose([
