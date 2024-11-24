@@ -81,12 +81,13 @@ import numpy as np
 import torch
 
 
-def plot_image_with_boxes(image, boxes, labels, scores, class_names, threshold=0.5):
+def plot_image_with_boxes(image, image_filename, boxes, labels, scores, class_names, threshold=0.5):
     """
     Plotta un'immagine con i bounding boxes.
 
     Args:
         image (PIL.Image.Image): L'immagine da visualizzare.
+        image_filename (str): Filename of image to analyze (for output naming)
         boxes (Tensor): Bounding boxes.
         labels (Tensor): Etichette delle classi.
         scores (Tensor): Confidenze delle predizioni.
@@ -138,12 +139,14 @@ def plot_image_with_boxes(image, boxes, labels, scores, class_names, threshold=0
 
     plt.axis("off")
     plt.show()
+    plt.savefig(f'plots/output_detection_{image_filename}') # PNG file suffix already in the variable
 
 
 if __name__ == "__main__":
     # Parametri
-    model_path = "fasterrcnn_vehicle_detector.pth"  # Modifica con il tuo percorso
-    test_image_path = "test_dimeas_cars.png"  # Immagine su cui fare inferenza
+    model_path = "/home/fabioski01/GEOINT_files/fasterrcnn_vehicle_detector.pth"  # Modifica con il tuo percorso
+    image_filename = 'test_dimeas_cars.png' # PNG only!
+    test_image_path = f"/home/fabioski01/GEOINT/images_to_analyze/{image_filename}" 
     image = Image.open(test_image_path).convert("RGB")
     num_classes = 12  # Modifica con il numero di classi del tuo dataset
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -161,7 +164,7 @@ if __name__ == "__main__":
         predictions["boxes"], predictions["labels"], predictions["scores"]
     ):
         print(f"Box: {box}, Label: {label}, Score: {score}")
-        plot_image_with_boxes(image, box, label, scores=score, class_names={1: "1", 2: "2", 3: "3", 4:"4", 5:"5", 6:"6", 7:"7", 8:"8", 9:"9", 10:"10", 11:"11", 12:"12"},threshold=0.5)
+        plot_image_with_boxes(image, image_filename, box, label, scores=score, class_names={1: "1", 2: "2", 3: "3", 4:"4", 5:"5", 6:"6", 7:"7", 8:"8", 9:"9", 10:"10", 11:"11", 12:"12"},threshold=0.5)
 
-    plot_image_with_boxes(image, predictions["boxes"], predictions["labels"], scores=predictions["scores"],
+    plot_image_with_boxes(image, image_filename, predictions["boxes"], predictions["labels"], scores=predictions["scores"],
                           class_names={1:"car", 2:"trucks", 4: "tractors", 5: "camping cars", 9: "vans", 10: "others", 11: "pickup", 23: "boats" , 201: "Small Land Vehicles", 301: "Large land Vehicles"}, threshold=0.5)
